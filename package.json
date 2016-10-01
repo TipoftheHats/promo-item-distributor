@@ -1,0 +1,21 @@
+{
+  "name": "promo-item-distributor",
+  "version": "1.0.0",
+  "description": "Figures out who qualified for in-game promo items during a Tip of the Hats event",
+  "main": "index.js",
+  "scripts": {
+    "test": "npm run eslint",
+    "static": "eslint ."
+  },
+  "author": "Alex Van Camp",
+  "license": "MIT",
+  "dependencies": {
+    "convict": "^1.5.0",
+    "pg": "^6.1.0",
+    "sync-request": "^3.0.1"
+  },
+  "devDependencies": {
+    "eslint": "^3.7.0",
+    "eslint-config-xo": "^0.16.0"
+  }
+}
