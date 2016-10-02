@@ -9,5 +9,6 @@ bower_components
 .idea/shelf/
 
 logs
+data
 
 npm-debug.log

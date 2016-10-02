@@ -1,19 +1,27 @@
 'use strict';
 
-const TABLE_NAME = 'promo_records_2016';
 const fs = require('fs');
 const pg = require('pg');
 const request = require('sync-request');
 const winston = require('winston');
 const convict = require('convict');
+const Listr = require('listr');
 
 // Set up logging. Every run of this program logs to a new file.
 if (!fs.existsSync('logs')) {
 	fs.mkdirSync('logs');
 }
-winston.add(winston.transports.File, {
-	level: 'silly',
-	filename: `logs/${Date.now()}.log`
+
+const logger = new (winston.Logger)({
+	transports: [
+		new (winston.transports.Console)({
+			level: 'warn'
+		}),
+		new (winston.transports.File)({
+			level: 'silly',
+			filename: `logs/${Date.now()}.log`
+		})
+	]
 });
 
 // Set up configuration
@@ -42,7 +50,7 @@ const conf = convict({
 }).getProperties();
 
 if (!conf.password) {
-	winston.log('error', 'No password provided!');
+	logger.log('error', 'No password provided!');
 	process.exit(1);
 }
 
@@ -55,72 +63,121 @@ const pgConfig = {
 };
 
 if (conf.env === 'production') {
-	// winston.log('warn', `Running in PRODUCTION against a LIVE DATABASE at ${conf.host}!`);
-	winston.log('info', 'Running in production mode is currently disabled.');
+	// logger.log('warn', `Running in PRODUCTION against a LIVE DATABASE at ${conf.host}!`);
+	logger.log('info', 'Running in production mode is currently disabled.');
 	process.exit(0);
 	pgConfig.host = conf.host;
 } else {
-	winston.log('info', 'Running in development mode against localhost.');
+	logger.log('info', 'Running in development mode against localhost.');
 }
-const pgClient = new pg.Client(pgConfig);
-const recipients = require('./recipients.json');
 
-pgClient.on('error', e => {
-	winston.log('error', 'Pool error!', e);
+const pgClient = new pg.Client(pgConfig);
+pgClient.on('error', err => {
+	logger.log('error', 'PostgreSQL client error!', err);
 });
 
-// Connect to tracker-database.tipofthehats.org
-pgClient.connect();
-pgClient.query(`SELECT to_regclass('${TABLE_NAME}');`)
-	.then(result => {
-		if (result.rows[0].to_regclass === null) {
-			winston.log('info', `Table ${TABLE_NAME} not found, creating...`);
-			const createTableSQL = fs.readFileSync('create_table.sql', 'utf-8');
-			return pgClient.query(createTableSQL);
-		}
+let donations;
 
-		winston.log('info', `Table ${TABLE_NAME} found!`);
-	})
-	.then(result => {
-		if (result && result.command === 'CREATE') {
-			winston.log('info', `Successfully created table ${TABLE_NAME}!`);
+const tasks = new Listr([
+	{
+		title: 'Read donations from disk',
+		task: () => {
+			donations = require('./data/donations.json');
 		}
-
-		// Load all recipients into the database. We'll give out the medals later.
-		recipients.forEach(recipient => {
-			pgClient.query(`INSERT INTO promo_records_2016 (steamid64) VALUES ('${recipient.steamid64}') ON CONFLICT (steamid64) DO NOTHING;`, (err, result)=> {
-				if (err) {
-					winston.log('error', `Error adding SteamID64 "${recipient.steamid64}" to database:`, err);
-					return;
+	},
+	{
+		title: `Connect to the database at ${conf.host}`,
+		task: () => pgClient.connect()
+	},
+	{
+		title: 'Create the tables if not already present',
+		task: () => pgClient.query(`SELECT to_regclass('2016_donors');`)
+			.then(result => {
+				if (result.rows[0].to_regclass === null) {
+					logger.log('info', `Tables not found, creating...`);
+					const createTableSQL = fs.readFileSync('create_table.sql', 'utf-8');
+					return pgClient.query(createTableSQL);
 				}
 
-				if (result.rowCount > 0) {
-					winston.log('debug', `Added SteamID64 "${recipient.steamid64}" to database.`);
-				} else {
-					winston.log('debug', `Skipped adding SteamID64 "${recipient.steamid64}" to database, already present`);
+				logger.log('info', `Tables found!`);
+			})
+			.then(result => {
+				if (result && result.command === 'CREATE') {
+					logger.log('info', `Successfully created tables!!`);
 				}
-			});
-		});
+			})
+	},
+	{
+		title: 'Add donors and donations to database',
+		task: () => {
+			logger.log('info', 'Adding donors and donations to database...');
 
-		return new Promise(resolve => {
-			// This seems to fire one tick too early, so we use a nextTick in here.
-			pgClient.once('drain', () => {
-				process.nextTick(() => {
-					winston.log('info', 'All donors added to database.');
-					resolve();
+			// Load all donations into the database.
+			donations.forEach(donation => {
+				// Add this donor's SteamID64 to the "donors" table, if not already present.
+				if (donation.steamid64) {
+					pgClient.query(`INSERT INTO "2016_donors" (steamid64) VALUES ('${donation.steamid64}') ON CONFLICT (steamid64) DO NOTHING;`, (err, result)=> {
+						if (err) {
+							logger.log('error', `Error adding donor SteamID64 "${donation.steamid64}" to database:`, err);
+							return;
+						}
+
+						if (result.rowCount > 0) {
+							logger.log('debug', `Added donor SteamID64 "${donation.steamid64}" to database.`);
+						} else {
+							logger.log('debug', `Skipped adding donor SteamID64 "${donation.steamid64}" to database, already present`);
+						}
+					});
+				}
+
+				// Add this donation to the "donations" table, if not already present
+				pgClient.query(`INSERT INTO "2016_donations" (id, steamid64, email, type, amount) VALUES ('${donation.id}', '${donation.steamid64}', '${donation.email}', '${donation.type}', '${donation.amount}') ON CONFLICT (id) DO NOTHING;`, (err, result)=> {
+					if (err) {
+						logger.log('error', `Error adding donation "${donation.id}" to database:`, err);
+						return;
+					}
+
+					if (result.rowCount > 0) {
+						logger.log('debug', `Added donation "${donation.id}" to database.`);
+					} else {
+						logger.log('debug', `Skipped adding donation "${donation.id}" to database, already present`);
+					}
 				});
 			});
-		});
-	})
-	.then(() => {
 
-	})
-	.catch(err => {
-		throw err;
-	});
+			return new Promise(resolve => {
+				// This seems to fire one tick too early, so we use a nextTick in here.
+				pgClient.once('drain', () => {
+					process.nextTick(() => {
+						logger.log('info', 'All donors & donations added to database.');
+						resolve();
+					});
+				});
+			});
+		}
+	},
+	{
+		title: 'Award medals to qualifying donors',
+		skip: () => true,
+		task: () => {
+
+		}
+	}
+], {
+	renderer: require('tty').isatty(process.stdout) ? require('listr-update-renderer') : require('listr-verbose-renderer')
+});
+
+tasks.run().then(() => {
+	logger.log('info', 'All done! Exiting.');
+	console.log('All done! Exiting.');
+	process.exit(0);
+}).catch(err => {
+	logger.log('error', 'Task error!', err);
+	process.exit(1);
+});
 
 return;
-recipients.forEach(recipient => {
+donations.forEach(recipient => {
 	const id = recipient.steamid64;
 
 	const res = request('POST', 'http://api.steampowered.com/ITFPromos_440/GrantItem/v0001/', {
@@ -132,7 +189,7 @@ recipients.forEach(recipient => {
 
 	const result = JSON.parse(res.getBody('UTF-8')).result;
 	if (result.status === 1) {
-		winston.log('info', 'Awarded Jaunty Pin (ID #%s) to %s', result.item_id, id);
+		logger.log('info', 'Awarded Jaunty Pin (ID #%s) to %s', result.item_id, id);
 	} else {
 		if (result.status === 2 && result.statusDetail.contains('Unable to load/lock account')) {
 			// This means the person put in a bad account and we can't do anything about it
