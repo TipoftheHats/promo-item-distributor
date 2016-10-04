@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS "2016_donations" (
     id character varying(32) NOT NULL,
     steamid64 character varying(32) NOT NULL,
     email character varying(128),
-    type donation_type,
+    type "2016_donation_type",
     amount NUMERIC(16, 2),
     CONSTRAINT "2016_donations_pkey" PRIMARY KEY (id)
 );

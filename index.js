@@ -73,9 +73,7 @@ const pgConfig = {
 };
 
 if (conf.env === 'production') {
-	// logger.log('warn', `Running in PRODUCTION against a LIVE DATABASE at ${conf.host}!`);
-	logger.log('info', 'Running in production mode is currently disabled.');
-	process.exit(0);
+	logger.log('warn', `Running in PRODUCTION against a LIVE DATABASE at ${conf.host}!`);
 
 	if (!conf.steamApiKey) {
 		logger.log('error', 'Must provide a STEAM_API_KEY!');
@@ -174,7 +172,7 @@ const tasks = new Listr([
 		}
 	},
 	{
-		title: `Award medals to qualifying donors${conf.env.production ? '' : ' [Simulated]'}`,
+		title: `Award medals to qualifying donors${conf.env === 'production' ? '' : ' [Simulated]'}`,
 		task: () => new Observable(observer => {
 			pgClient.query('SELECT *, "2016_donors".total_donated FROM "2016_donors" WHERE promo_item_awarded = \'\' AND "2016_donors".total_donated >= 10 ORDER BY steamid64;').then(result => {
 				observer.next(`Found ${result.rowCount} qualifying donations`);
@@ -211,6 +209,8 @@ function processDonor(donors, currentDonor, observer) {
 
 	if (conf.env === 'production') {
 		uri = 'http://api.steampowered.com/ITFPromos_440/GrantItem/v0001/';
+	} else {
+		promoId = `simulated_${promoId}`;
 	}
 
 	observer.next(`Awarding promo #${promoId} to ${currentDonor.steamid64}, total_donated: $${currentDonor.total_donated}...`);
@@ -230,9 +230,9 @@ function processDonor(donors, currentDonor, observer) {
 
 		let statusStr = '';
 		if (result.status === 1) {
-			observer.next(`Awarding promo #${promoId} to ${currentDonor.steamid64}, total_donated: $${currentDonor.total_donated}... Success!`);
-			logger.log('info', statusStr);
+			statusStr = `Awarding promo #${promoId} to ${currentDonor.steamid64}, total_donated: $${currentDonor.total_donated}... Success!`;
 			observer.next(statusStr);
+			logger.log('info', statusStr);
 			return pgClient.query(`UPDATE "2016_donors" SET promo_item_awarded = '${promoId}' WHERE steamid64 = '${currentDonor.steamid64}';`);
 		} else if (result.status === 2 && result.statusDetail.contains('Unable to load/lock account')) {
 			// This means the person put in a bad account and we can't do anything about it
