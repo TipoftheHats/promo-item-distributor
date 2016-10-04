@@ -1,11 +1,16 @@
 'use strict';
 
+const TIER_1_PROMO_ID = '1215';
+const TIER_2_PROMO_ID = '1216';
+const TIER_3_PROMO_ID = '1217';
+
 const fs = require('fs');
 const pg = require('pg');
 const request = require('sync-request');
 const winston = require('winston');
 const convict = require('convict');
 const Listr = require('listr');
+const Observable = require('zen-observable');
 
 // Set up logging. Every run of this program logs to a new file.
 if (!fs.existsSync('logs')) {
@@ -46,6 +51,13 @@ const conf = convict({
 		default: '',
 		env: 'PASSWORD',
 		arg: 'password'
+	},
+	steamApiKey: {
+		doc: 'The Steam API key used to access the promo system and grant items.',
+		format: String,
+		default: '',
+		env: 'STEAM_API_KEY',
+		arg: 'steamApiKey'
 	}
 }).getProperties();
 
@@ -59,13 +71,19 @@ const pgConfig = {
 	user: 'promo_records',
 	database: 'promo_records',
 	password: conf.password,
-	application_name: 'promo-item-distributor_2016'
+	application_name: 'promo-item-distributor_2016' // eslint-disable-line camelcase
 };
 
 if (conf.env === 'production') {
 	// logger.log('warn', `Running in PRODUCTION against a LIVE DATABASE at ${conf.host}!`);
 	logger.log('info', 'Running in production mode is currently disabled.');
 	process.exit(0);
+
+	if (!conf.steamApiKey) {
+		logger.log('error', 'Must provide a STEAM_API_KEY!');
+		process.exit(1);
+	}
+
 	pgConfig.host = conf.host;
 } else {
 	logger.log('info', 'Running in development mode against localhost.');
@@ -116,7 +134,7 @@ const tasks = new Listr([
 			donations.forEach(donation => {
 				// Add this donor's SteamID64 to the "donors" table, if not already present.
 				if (donation.steamid64) {
-					pgClient.query(`INSERT INTO "2016_donors" (steamid64) VALUES ('${donation.steamid64}') ON CONFLICT (steamid64) DO NOTHING;`, (err, result)=> {
+					pgClient.query(`INSERT INTO "2016_donors" (steamid64) VALUES ('${donation.steamid64}') ON CONFLICT (steamid64) DO NOTHING;`, (err, result) => {
 						if (err) {
 							logger.log('error', `Error adding donor SteamID64 "${donation.steamid64}" to database:`, err);
 							return;
@@ -131,7 +149,7 @@ const tasks = new Listr([
 				}
 
 				// Add this donation to the "donations" table, if not already present
-				pgClient.query(`INSERT INTO "2016_donations" (id, steamid64, email, type, amount) VALUES ('${donation.id}', '${donation.steamid64}', '${donation.email}', '${donation.type}', '${donation.amount}') ON CONFLICT (id) DO NOTHING;`, (err, result)=> {
+				pgClient.query(`INSERT INTO "2016_donations" (id, steamid64, email, type, amount) VALUES ('${donation.id}', '${donation.steamid64}', '${donation.email}', '${donation.type}', '${donation.amount}') ON CONFLICT (id) DO NOTHING;`, (err, result) => {
 					if (err) {
 						logger.log('error', `Error adding donation "${donation.id}" to database:`, err);
 						return;
@@ -157,11 +175,72 @@ const tasks = new Listr([
 		}
 	},
 	{
-		title: 'Award medals to qualifying donors',
-		skip: () => true,
-		task: () => {
+		title: `Award medals to qualifying donors${conf.env.production ? '' : ' [Simulated]'}`,
+		task: () => new Observable(observer => {
+			pgClient.query('SELECT *, "2016_donors".total_donated FROM "2016_donors" WHERE promo_item_awarded = \'\' AND "2016_donors".total_donated >= 10 ORDER BY steamid64;').then(result => {
+				observer.next(`Found ${result.rowCount} qualifying donations`);
+				logger.info(`Found ${result.rowCount} qualifying donations`);
 
-		}
+				if (result.rows.length === 0) {
+					logger.log('info', 'Nothing to award, done.');
+					observer.complete();
+					return;
+				}
+
+				result.rows.forEach(donor => {
+					let promoId;
+					if (donor.total_donated >= 100) {
+						promoId = TIER_3_PROMO_ID;
+					} else if (donor.total_donated >= 30) {
+						promoId = TIER_2_PROMO_ID;
+					} else if (donor.total_donated >= 10) {
+						promoId = TIER_1_PROMO_ID;
+					} else {
+						logger.error('Refusing to award medal to donor "%s", because their total_donated is less than the $10 threshold (%d)', donor.steamid64, donor.total_donated);
+						return;
+					}
+
+					let url = 'http://localhost:22364/grant_item';
+
+					if (conf.env === 'production') {
+						url = 'http://api.steampowered.com/ITFPromos_440/GrantItem/v0001/';
+					}
+
+					const res = request('POST', url, {
+						headers: {
+							'Content-Type': 'application/x-www-form-urlencoded'
+						},
+						body: `SteamID=${donor.steamid64}&PromoID=${promoId}&key=${conf.steamApiKey}`
+					});
+
+					logger.info('result', res.getBody('utf8'));
+
+					const result = JSON.parse(res.getBody('utf8')).result;
+					let statusStr = '';
+					if (result.status === 1) {
+						statusStr = `Awarded promo #${promoId} (Item ID #${result.item_id}) to ${donor.steamid64}`;
+						pgClient.query(`UPDATE "2016_donors" SET promo_item_awarded = '${promoId}' WHERE steamid64 = '${donor.steamid64}';`);
+						logger.log('info', statusStr);
+					} else if (result.status === 2 && result.statusDetail.contains('Unable to load/lock account')) {
+						// This means the person put in a bad account and we can't do anything about it
+						statusStr = `Can't award Jaunty Pin to ${donor.steamid64}, did they enter an invalid SteamID64?: ${result.statusDetail}`;
+						logger.error(statusStr);
+					} else {
+						statusStr = `Failed to award Jaunty Pin to ${donor.steamid64}: ${result.statusDetail}`;
+						logger.error(statusStr);
+					}
+
+					observer.next(statusStr);
+				});
+
+				pgClient.once('drain', () => {
+					process.nextTick(() => {
+						logger.log('info', 'All promo items awarded & logged.');
+						observer.complete();
+					});
+				});
+			});
+		})
 	}
 ], {
 	renderer: require('tty').isatty(process.stdout) ? require('listr-update-renderer') : require('listr-verbose-renderer')
@@ -170,32 +249,10 @@ const tasks = new Listr([
 tasks.run().then(() => {
 	logger.log('info', 'All done! Exiting.');
 	console.log('All done! Exiting.');
-	process.exit(0);
+	process.nextTick(() => {
+		process.exit(0);
+	});
 }).catch(err => {
 	logger.log('error', 'Task error!', err);
 	process.exit(1);
-});
-
-return;
-donations.forEach(recipient => {
-	const id = recipient.steamid64;
-
-	const res = request('POST', 'http://api.steampowered.com/ITFPromos_440/GrantItem/v0001/', {
-		headers: {
-			'Content-Type': 'application/x-www-form-urlencoded'
-		},
-		body: `SteamID=${id}&PromoID=PROMO_ID_HERE&key=KEY_GO_HERE`
-	});
-
-	const result = JSON.parse(res.getBody('UTF-8')).result;
-	if (result.status === 1) {
-		logger.log('info', 'Awarded Jaunty Pin (ID #%s) to %s', result.item_id, id);
-	} else {
-		if (result.status === 2 && result.statusDetail.contains('Unable to load/lock account')) {
-			// This means the person put in a bad account and we can't do anything about it
-			return;
-		} else {
-			throw new Error(`Failed to award Jaunty Pin to ${id}: ${result.statusDetail}`);
-		}
-	}
 });

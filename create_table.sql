@@ -1,6 +1,6 @@
 CREATE TABLE IF NOT EXISTS "2016_donors" (
     steamid64 character varying(32) NOT NULL,
-    promo_item_awarded boolean DEFAULT FALSE,
+    promo_item_awarded character varying(16) DEFAULT '',
     CONSTRAINT "2016_donors_pkey" PRIMARY KEY (steamid64)
 );
 

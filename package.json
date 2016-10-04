@@ -4,20 +4,24 @@
   "description": "Figures out who qualified for in-game promo items during a Tip of the Hats event",
   "main": "index.js",
   "scripts": {
-    "test": "npm run eslint",
-    "static": "eslint ."
+    "test": "npm run static",
+    "static": "eslint .",
+    "mock-server": "node mock-server"
   },
   "author": "Alex Van Camp",
   "license": "MIT",
   "dependencies": {
+    "body-parser": "^1.15.2",
     "convict": "^1.5.0",
     "csv-parser": "^1.11.0",
+    "express": "^4.14.0",
     "listr": "^0.6.1",
     "listr-update-renderer": "^0.1.2",
     "listr-verbose-renderer": "^0.1.0",
     "pg": "^6.1.0",
     "sync-request": "^3.0.1",
-    "winston": "^2.2.0"
+    "winston": "^2.2.0",
+    "zen-observable": "^0.3.0"
   },
   "devDependencies": {
     "eslint": "^3.7.0",
