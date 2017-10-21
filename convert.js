@@ -23,7 +23,7 @@ fs.createReadStream('data/raw-cash-donations.csv')
 		cash_steamid64s.add(data.steamid);
 
 		if (data.steamid.length !== 17) {
-			console.log('ABNORMAL STEAMID:', data);
+			console.log('ABNORMAL CASH STEAMID:', data);
 		}
 	})
 	.on('end', () => {
@@ -43,7 +43,7 @@ fs.createReadStream('data/raw-cash-donations.csv')
 			}
 
 			if (itemDonation.user.steamid.length !== 17) {
-				console.log('ABNORMAL STEAMID:', itemDonation);
+				console.log('ABNORMAL ITEM STEAMID:', itemDonation);
 			}
 		});
 

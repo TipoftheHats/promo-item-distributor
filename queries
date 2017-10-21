@@ -1,0 +1,11 @@
+# Output the donations for the named event into the file. You WILL need to add
+# headers for convert.js to work.
+COPY (
+SELECT d.id, d.steamid, d.requestedemail, d.amount
+  FROM tracker_donation d
+  JOIN tracker_event
+    ON tracker_event.name = 'Tip of the Hats 2017'
+ WHERE d.event_id = tracker_event.id
+)
+TO '/tmp/raw-cash-donations.csv' (format CSV)
+ ;
