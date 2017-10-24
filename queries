@@ -6,6 +6,7 @@ SELECT d.id, d.steamid, d.requestedemail, d.amount
   JOIN tracker_event
     ON tracker_event.name = 'Tip of the Hats 2017'
  WHERE d.event_id = tracker_event.id
+   AND d.transactionstate = 'COMPLETED'
 )
 TO '/tmp/raw-cash-donations.csv' (format CSV)
  ;
