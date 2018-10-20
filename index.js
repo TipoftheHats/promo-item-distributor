@@ -193,7 +193,26 @@ const tasks = new Listr([
 	renderer: require('tty').isatty(process.stdout) ? require('listr-update-renderer') : require('listr-verbose-renderer')
 });
 
-function processDonor(donors, currentDonor, observer) {
+function doesSteamAccountHavePromoItem(steamid64, promoId) {
+	return request({
+		method: 'GET',
+		uri: 'http://api.steampowered.com/ITFPromos_440/GetItemID/v0001',
+		qs: {
+			SteamID: steamid64,
+			PromoID: promoId,
+			key: conf.steamApiKey
+		}
+	}).then(body => {
+		const result = JSON.parse(body).result;
+		if ({}.hasOwnProperty.call(result, 'item_id') && {}.hasOwnProperty.call(result, 'status')) {
+			return Boolean(result.status);
+		}
+
+		throw new Error(`Malformed Steam API response: ${result}`);
+	});
+}
+
+async function processDonor(donors, currentDonor, observer) {
 	let promoId;
 	if (currentDonor.total_donated >= 100) {
 		promoId = TIER_3_PROMO_ID;
@@ -206,18 +225,34 @@ function processDonor(donors, currentDonor, observer) {
 		return;
 	}
 
-	let uri = 'http://localhost:22364/grant_item';
+	// Check if the given Steam ID already has this Promo ID.
+	// Log the result if this check.
+	// If true, return early.
+	// If false, continue the awarding process.
+	let queryStatusStr = `Asking the Steam API if ${currentDonor.steamid64} has already received promo #${promoId}...`;
+	observer.next(queryStatusStr);
+	const steamAccountHasPromoItem = await doesSteamAccountHavePromoItem(currentDonor.steamid64, promoId);
+	queryStatusStr += steamAccountHasPromoItem ? ' yes, skipping.' : 'no, awarding.';
+	observer.next(queryStatusStr);
+	logger.log('info', queryStatusStr);
+	if (steamAccountHasPromoItem) {
+		return advanceToNextDonor();
+	}
 
+	// Only use the actual promoGrantURI when in production.
+	// Else, use our local mock server.
+	let promoGrantURI = 'http://localhost:22364/grant_item';
 	if (conf.env === 'production') {
-		uri = 'http://api.steampowered.com/ITFPromos_440/GrantItem/v0001/';
+		promoGrantURI = 'http://api.steampowered.com/ITFPromos_440/GrantItem/v0001/';
 	} else {
 		promoId = `simulated_${promoId}`;
 	}
 
+	// Execute the promo grant request.
 	observer.next(`Awarding promo #${promoId} to ${currentDonor.steamid64}, total_donated: $${currentDonor.total_donated}...`);
-	request({
+	await request({
 		method: 'POST',
-		uri,
+		uri: promoGrantURI,
 		headers: {
 			'Content-Type': 'application/x-www-form-urlencoded'
 		},
@@ -256,16 +291,18 @@ function processDonor(donors, currentDonor, observer) {
 		} else {
 			logger.warn(`Didn't mark SteamID64 "${currentDonor.steamid64} as having received promo #${promoId} in database! Don't know why!"`);
 		}
-	}).finally(() => {
-		if (donors.length > 0) {
-			processDonor(donors, donors.pop(), observer);
-		} else {
-			logger.log('info', 'All promo items awarded & logged.');
-			observer.complete();
-		}
-	}).catch(err => {
+	}).finally(advanceToNextDonor).catch(err => {
 		logger.error(`Failed to award Jaunty Pin to ${currentDonor.steamid64}:`, err);
 	});
+
+	function advanceToNextDonor() {
+		if (donors.length > 0) {
+			return processDonor(donors, donors.pop(), observer);
+		}
+
+		logger.log('info', 'All promo items awarded & logged.');
+		observer.complete();
+	}
 }
 
 tasks.run().then(() => {
