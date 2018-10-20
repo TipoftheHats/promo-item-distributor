@@ -64,6 +64,7 @@ const conf = convict({
 
 if (!conf.password) {
 	logger.log('error', 'No password provided!');
+	console.error('No password provided!');
 	process.exit(1);
 }
 
@@ -80,6 +81,7 @@ if (conf.env === 'production') {
 
 	if (!conf.steamApiKey) {
 		logger.log('error', 'Must provide a STEAM_API_KEY!');
+		console.error('Must provide a STEAM_API_KEY!');
 		process.exit(1);
 	}
 
@@ -91,6 +93,7 @@ if (conf.env === 'production') {
 const pgClient = new pg.Client(pgConfig);
 pgClient.on('error', err => {
 	logger.log('error', 'PostgreSQL client error!', err);
+	console.error('PostgreSQL client error!', err);
 	process.exit(1);
 });
 
@@ -343,5 +346,6 @@ tasks.run().then(() => {
 	});
 }).catch(err => {
 	logger.log('error', 'Task error!', err);
+	console.error('Task error!', err);
 	process.exit(1);
 });
