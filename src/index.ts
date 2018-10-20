@@ -12,10 +12,9 @@ import * as Promise from 'bluebird';
 import * as request from 'request-promise';
 import * as winston from 'winston';
 
-// TODO: Update these for 2018.
-const TIER_1_PROMO_ID = '1609';
-const TIER_2_PROMO_ID = '1608';
-const TIER_3_PROMO_ID = '1607';
+const TIER_1_PROMO_ID = '2237';
+const TIER_2_PROMO_ID = '2238';
+const TIER_3_PROMO_ID = '2239';
 
 // Set up logging. Every run of this program logs to a new file.
 if (!fs.existsSync('logs')) {
