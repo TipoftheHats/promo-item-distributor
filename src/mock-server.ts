@@ -1,8 +1,10 @@
 'use strict';
 
+// Packages
+import * as express from 'express';
+import * as bodyParser from 'body-parser';
+
 const PORT = 22364;
-const express = require('express');
-const bodyParser = require('body-parser');
 const app = express();
 
 app.use(bodyParser.urlencoded({extended: false}));

@@ -1,25 +1,28 @@
 'use strict';
 
+// Native
+import * as fs from 'fs';
+
+// Packages
+import * as convict from 'convict';
+import * as Listr from 'listr';
+import * as Observable from 'zen-observable';
+import * as pg from 'pg';
+import * as Promise from 'bluebird';
+import * as request from 'request-promise';
+import * as winston from 'winston';
+
 // TODO: Update these for 2018.
 const TIER_1_PROMO_ID = '1609';
 const TIER_2_PROMO_ID = '1608';
 const TIER_3_PROMO_ID = '1607';
-
-const fs = require('fs');
-const pg = require('pg');
-const request = require('request-promise');
-const winston = require('winston');
-const convict = require('convict');
-const Listr = require('listr');
-const Observable = require('zen-observable');
-const Promise = require('bluebird');
 
 // Set up logging. Every run of this program logs to a new file.
 if (!fs.existsSync('logs')) {
 	fs.mkdirSync('logs');
 }
 
-const logger = new (winston.Logger)({
+const logger = winston.createLogger({
 	transports: [
 		new (winston.transports.File)({
 			level: 'silly',
@@ -83,7 +86,7 @@ if (conf.env === 'production') {
 
 	pgConfig.host = conf.host;
 } else {
-	logger.log('info', 'Running in development mode against localhost.');
+	logger.info('Running in development mode against localhost.');
 }
 
 const pgClient = new pg.Client(pgConfig);
@@ -92,13 +95,27 @@ pgClient.on('error', err => {
 	process.exit(1);
 });
 
-let donations;
+let donations: DonationFromJSON[];
+
+interface DonationFromJSON {
+	id: string;
+	steamid64: string;
+	email: string;
+	type: string;
+	amount: string | number;
+}
+
+interface DonorFromPostgres {
+	steamid64: string;
+	promo_item_awarded: string;
+	total_donated: number;
+}
 
 const tasks = new Listr([
 	{
 		title: 'Read donations from disk',
 		task: () => {
-			donations = require('./data/donations.json');
+			donations = require('../data/donations.json');
 		}
 	},
 	{
@@ -107,26 +124,29 @@ const tasks = new Listr([
 	},
 	{
 		title: 'Create the tables if not already present',
-		task: () => pgClient.query(`SELECT to_regclass('2018_donors');`)
-			.then(result => {
+		task: () => pgClient.query('SELECT to_regclass(\'2018_donors\');')
+			.then(async result => {
+				logger.info('0');
 				if (result.rows[0].to_regclass === null) {
-					logger.log('info', `Tables not found, creating...`);
+					logger.info('Tables not found, creating...');
 					const createTableSQL = fs.readFileSync('create_table.sql', 'utf-8');
-					return pgClient.query(createTableSQL);
+					logger.info('1');
+					const creationResult = await pgClient.query(createTableSQL);
+					logger.info('2');
+					if (creationResult && creationResult.command === 'CREATE') {
+						logger.info('Successfully created tables!!');
+					}
+				} else {
+					logger.info('3');
+					logger.info('Tables found!');
 				}
-
-				logger.log('info', `Tables found!`);
-			})
-			.then(result => {
-				if (result && result.command === 'CREATE') {
-					logger.log('info', `Successfully created tables!!`);
-				}
+				logger.info('4');
 			})
 	},
 	{
 		title: 'Add donors and donations to database',
 		task: () => {
-			logger.log('info', 'Adding donors and donations to database...');
+			logger.info('Adding donors and donations to database...');
 
 			// Load all donations into the database.
 			donations.forEach(donation => {
@@ -165,7 +185,7 @@ const tasks = new Listr([
 				// This seems to fire one tick too early, so we use a nextTick in here.
 				pgClient.once('drain', () => {
 					process.nextTick(() => {
-						logger.log('info', 'All donors & donations added to database.');
+						logger.info('All donors & donations added to database.');
 						resolve();
 					});
 				});
@@ -180,7 +200,7 @@ const tasks = new Listr([
 				logger.info(`Found ${result.rowCount} qualifying donations`);
 
 				if (result.rows.length === 0) {
-					logger.log('info', 'Nothing to award, done.');
+					logger.info('Nothing to award, done.');
 					observer.complete();
 					return;
 				}
@@ -193,10 +213,10 @@ const tasks = new Listr([
 	renderer: require('tty').isatty(process.stdout) ? require('listr-update-renderer') : require('listr-verbose-renderer')
 });
 
-function doesSteamAccountHavePromoItem(steamid64, promoId) {
+function doesSteamAccountHavePromoItem(steamid64: string, promoId: string) {
 	return request({
 		method: 'GET',
-		uri: 'http://api.steampowered.com/ITFPromos_440/GetItemID/v0001',
+		uri: 'https://api.steampowered.com/ITFPromos_440/GetItemID/v0001',
 		qs: {
 			SteamID: steamid64,
 			PromoID: promoId,
@@ -212,8 +232,8 @@ function doesSteamAccountHavePromoItem(steamid64, promoId) {
 	});
 }
 
-async function processDonor(donors, currentDonor, observer) {
-	let promoId;
+async function processDonor(donors: DonorFromPostgres[], currentDonor: DonorFromPostgres, observer: any) {
+	let promoId: string;
 	if (currentDonor.total_donated >= 100) {
 		promoId = TIER_3_PROMO_ID;
 	} else if (currentDonor.total_donated >= 30) {
@@ -234,16 +254,16 @@ async function processDonor(donors, currentDonor, observer) {
 	const steamAccountHasPromoItem = await doesSteamAccountHavePromoItem(currentDonor.steamid64, promoId);
 	queryStatusStr += steamAccountHasPromoItem ? ' yes, skipping.' : 'no, awarding.';
 	observer.next(queryStatusStr);
-	logger.log('info', queryStatusStr);
+	logger.info(queryStatusStr);
 	if (steamAccountHasPromoItem) {
 		return advanceToNextDonor();
 	}
 
 	// Only use the actual promoGrantURI when in production.
 	// Else, use our local mock server.
-	let promoGrantURI = 'http://localhost:22364/grant_item';
+	let promoGrantURI = 'http://localhost:22364/grant_item'; // tslint:disable-line:no-http-string
 	if (conf.env === 'production') {
-		promoGrantURI = 'http://api.steampowered.com/ITFPromos_440/GrantItem/v0001/';
+		promoGrantURI = 'https://api.steampowered.com/ITFPromos_440/GrantItem/v0001/';
 	} else {
 		promoId = `simulated_${promoId}`;
 	}
@@ -261,16 +281,24 @@ async function processDonor(donors, currentDonor, observer) {
 			PromoID: promoId,
 			key: conf.steamApiKey
 		}
-	}).then(body => {
+	}).then(async body => {
 		const result = JSON.parse(body).result;
 
 		let statusStr = '';
 		if (result.status === 1) {
 			statusStr = `Awarding promo #${promoId} to ${currentDonor.steamid64}, total_donated: $${currentDonor.total_donated}... Success!`;
 			observer.next(statusStr);
-			logger.log('info', statusStr);
-			return pgClient.query(`UPDATE "2018_donors" SET promo_item_awarded = '${promoId}' WHERE steamid64 = '${currentDonor.steamid64}';`);
-		} else if (result.status === 2 && result.statusDetail.contains('Unable to load/lock account')) {
+			logger.info(statusStr);
+			const updateResult = await pgClient.query(`UPDATE "2018_donors" SET promo_item_awarded = '${promoId}' WHERE steamid64 = '${currentDonor.steamid64}';`);
+			if (updateResult.rowCount === 1) {
+				logger.info(`Marked SteamID64 "${currentDonor.steamid64} as having received promo #${promoId} in database"`);
+			} else {
+				logger.warn(`Didn't mark SteamID64 "${currentDonor.steamid64} as having received promo #${promoId} in database! Don't know why!"`);
+			}
+			return;
+		}
+
+		if (result.status === 2 && result.statusDetail.contains('Unable to load/lock account')) {
 			// This means the person put in a bad account and we can't do anything about it
 			statusStr = `Can't award Jaunty Pin to ${currentDonor.steamid64}, did they enter an invalid SteamID64?: ${result.statusDetail}`;
 			logger.error(statusStr);
@@ -280,33 +308,36 @@ async function processDonor(donors, currentDonor, observer) {
 		}
 
 		observer.next(statusStr);
-		return new Promise((resolve, reject) => {
+		return new Promise((_resolve, reject) => {
+			// I can't remember why this is on a short delay.
+			// I think it is to give time to read the message and maybe to give the API some time to breathe?
+			// The Steam APIs are super slow and we don't want to get ratelimited.
 			setTimeout(() => {
 				reject();
 			}, 1000);
 		});
-	}).then(result => {
-		if (result.rowCount === 1) {
-			logger.log(`Marked SteamID64 "${currentDonor.steamid64} as having received promo #${promoId} in database"`);
-		} else {
-			logger.warn(`Didn't mark SteamID64 "${currentDonor.steamid64} as having received promo #${promoId} in database! Don't know why!"`);
-		}
 	}).finally(advanceToNextDonor).catch(err => {
 		logger.error(`Failed to award Jaunty Pin to ${currentDonor.steamid64}:`, err);
 	});
 
-	function advanceToNextDonor() {
+	function advanceToNextDonor(): unknown {
 		if (donors.length > 0) {
-			return processDonor(donors, donors.pop(), observer);
+			const nextDonor = donors.pop();
+			if (nextDonor) {
+				return processDonor(donors, nextDonor, observer);
+			}
+
+			return advanceToNextDonor();
 		}
 
-		logger.log('info', 'All promo items awarded & logged.');
+		logger.info('All promo items awarded & logged.');
 		observer.complete();
+		return;
 	}
 }
 
 tasks.run().then(() => {
-	logger.log('info', 'All done! Exiting.');
+	logger.info('All done! Exiting.');
 	console.log('All done! Exiting.');
 	process.nextTick(() => {
 		process.exit(0);
