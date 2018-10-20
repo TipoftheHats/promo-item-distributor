@@ -102,7 +102,7 @@ const tasks = new Listr([
 		}
 	},
 	{
-		title: `Connect to the database at ${conf.host}`,
+		title: `Connect to the database at ${pgConfig.host}`,
 		task: () => pgClient.connect()
 	},
 	{
