@@ -1,5 +1,6 @@
 'use strict';
 
+// TODO: Update these for 2018.
 const TIER_1_PROMO_ID = '1609';
 const TIER_2_PROMO_ID = '1608';
 const TIER_3_PROMO_ID = '1607';
