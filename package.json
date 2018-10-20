@@ -2,11 +2,12 @@
   "name": "promo-item-distributor",
   "version": "1.0.0",
   "description": "Figures out who qualified for in-game promo items during a Tip of the Hats event",
-  "main": "index.js",
+  "main": "src/index.js",
   "scripts": {
+    "start": "ts-node src/index.ts",
     "test": "npm run static",
-    "static": "eslint .",
-    "mock-server": "node mock-server"
+    "static": "tslint -c tslint.json 'src/**/*.ts'",
+    "mock-server": "ts-node src/mock-server"
   },
   "author": "Alex Van Camp",
   "license": "MIT",
@@ -22,11 +23,22 @@
     "pg": "^6.1.0",
     "request": "^2.75.0",
     "request-promise": "^4.1.1",
-    "winston": "^2.2.0",
-    "zen-observable": "^0.3.0"
+    "winston": "^3.1.0",
+    "zen-observable": "^0.8.0"
   },
   "devDependencies": {
-    "eslint": "^3.7.0",
-    "eslint-config-xo": "^0.16.0"
+    "@types/body-parser": "^1.17.0",
+    "@types/convict": "^4.2.0",
+    "@types/express": "^4.16.0",
+    "@types/listr": "^0.13.0",
+    "@types/node": "^10.12.0",
+    "@types/pg": "^7.4.11",
+    "@types/request-promise": "^4.1.42",
+    "@types/zen-observable": "^0.8.0",
+    "trash-cli": "^1.4.0",
+    "ts-node": "^7.0.1",
+    "tslint": "^5.11.0",
+    "tslint-xo": "^0.9.0",
+    "typescript": "^3.1.3"
   }
 }
