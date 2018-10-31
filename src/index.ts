@@ -215,25 +215,6 @@ const tasks = new Listr([
 	renderer: require('tty').isatty(process.stdout) ? require('listr-update-renderer') : require('listr-verbose-renderer')
 });
 
-function doesSteamAccountHavePromoItem(steamid64: string, promoId: string) {
-	return request({
-		method: 'GET',
-		uri: 'https://api.steampowered.com/ITFPromos_440/GetItemID/v0001',
-		qs: {
-			SteamID: steamid64,
-			PromoID: promoId,
-			key: conf.steamApiKey
-		}
-	}).then(body => {
-		const result = JSON.parse(body).result;
-		if ({}.hasOwnProperty.call(result, 'item_id') && {}.hasOwnProperty.call(result, 'status')) {
-			return Boolean(result.status);
-		}
-
-		throw new Error(`Malformed Steam API response: ${result}`);
-	});
-}
-
 async function processDonor(donors: DonorFromPostgres[], currentDonor: DonorFromPostgres, observer: any) {
 	let promoId: string;
 	if (currentDonor.total_donated >= 100) {
@@ -245,20 +226,6 @@ async function processDonor(donors: DonorFromPostgres[], currentDonor: DonorFrom
 	} else {
 		logger.error('Refusing to award medal to donor "%s", because their total_donated is less than the $10 threshold (%d)', currentDonor.steamid64, currentDonor.total_donated);
 		return;
-	}
-
-	// Check if the given Steam ID already has this Promo ID.
-	// Log the result if this check.
-	// If true, return early.
-	// If false, continue the awarding process.
-	let queryStatusStr = `Asking the Steam API if ${currentDonor.steamid64} has already received promo #${promoId}...`;
-	observer.next(queryStatusStr);
-	const steamAccountHasPromoItem = await doesSteamAccountHavePromoItem(currentDonor.steamid64, promoId);
-	queryStatusStr += steamAccountHasPromoItem ? ' yes, skipping.' : 'no, awarding.';
-	observer.next(queryStatusStr);
-	logger.info(queryStatusStr);
-	if (steamAccountHasPromoItem) {
-		return advanceToNextDonor();
 	}
 
 	// Only use the actual promoGrantURI when in production.
