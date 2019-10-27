@@ -10,12 +10,12 @@ const array: {
 	id: string;
 	steamid64: string;
 	email: string;
-	type: 'item' | 'cash';
+	type: 'mptf' | 'cash';
 	amount: number;
 }[] = [];
 const uniqueSteamid64s = new Set();
 const cashSteamid64s = new Set();
-const itemSteamid64s = new Set();
+const mptfSteamid64s = new Set();
 const dualDonors = new Set();
 
 fs.createReadStream('data/raw-cash-donations.csv')
@@ -36,29 +36,29 @@ fs.createReadStream('data/raw-cash-donations.csv')
 		}
 	})
 	.on('end', () => {
-		const itemDonations = require('../data/raw-item-donations.json').donations;
-		itemDonations.forEach((itemDonation: any) => {
+		const mptfDonations = require('../data/raw-mptf-donations.json').donations;
+		mptfDonations.forEach((mptfDonation: any) => {
 			array.push({
-				id: `item_${itemDonation.id}`,
-				steamid64: itemDonation.user.steamid,
+				id: `mptf_${mptfDonation.id}`,
+				steamid64: mptfDonation.user.steamid,
 				email: '',
-				type: 'item',
-				amount: itemDonation.cash_value
+				type: 'mptf',
+				amount: mptfDonation.cash_value
 			});
-			uniqueSteamid64s.add(itemDonation.user.steamid);
-			itemSteamid64s.add(itemDonation.user.steamid);
-			if (cashSteamid64s.has(itemDonation.user.steamid)) {
-				dualDonors.add(itemDonation.user.steamid);
+			uniqueSteamid64s.add(mptfDonation.user.steamid);
+			mptfSteamid64s.add(mptfDonation.user.steamid);
+			if (cashSteamid64s.has(mptfDonation.user.steamid)) {
+				dualDonors.add(mptfDonation.user.steamid);
 			}
 
-			if (itemDonation.user.steamid.length !== 17) {
-				console.log('ABNORMAL ITEM STEAMID:', itemDonation);
+			if (mptfDonation.user.steamid.length !== 17) {
+				console.log('ABNORMAL MPTF STEAMID:', mptfDonation);
 			}
 		});
 
 		console.log('unique steamids:', uniqueSteamid64s.size);
 		console.log('cash steamids:', cashSteamid64s.size);
-		console.log('item steamids:', itemSteamid64s.size);
+		console.log('mptf steamids:', mptfSteamid64s.size);
 		console.log('dual donors:', dualDonors.size);
 		fs.writeFileSync('data/donations.json', JSON.stringify(array), 'utf-8');
 	});

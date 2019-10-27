@@ -5,6 +5,7 @@
   "main": "src/index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
+    "convert": "ts-node src/convert.ts",
     "test": "npm run static",
     "static": "tslint -c tslint.json 'src/**/*.ts'",
     "mock-server": "ts-node src/mock-server"

@@ -4,9 +4,21 @@ COPY (
 SELECT d.id, d.steamid, d.requestedemail, d.amount
   FROM tracker_donation d
   JOIN tracker_event
-    ON tracker_event.name = 'Tip of the Hats 2017'
+    ON tracker_event.name = 'Tip of the Hats 2019'
  WHERE d.event_id = tracker_event.id
    AND d.transactionstate = 'COMPLETED'
+   AND d.steamid != ''
 )
 TO '/tmp/raw-cash-donations.csv' (format CSV)
  ;
+
+# How many unique steamids donated during your event? Cross-check this with the
+# `unique steamids` output from convert.js.
+SELECT COUNT(DISTINCT steamid)
+FROM tracker_donation d
+JOIN tracker_event
+ON tracker_event.name = 'Tip of the Hats 2019'
+WHERE d.event_id = tracker_event.id
+  AND d.transactionstate = 'COMPLETED'
+  AND d.steamid != ''
+;
