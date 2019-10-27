@@ -12,9 +12,9 @@ import * as Promise from 'bluebird';
 import * as request from 'request-promise';
 import * as winston from 'winston';
 
-const TIER_1_PROMO_ID = '2239';
-const TIER_2_PROMO_ID = '2238';
-const TIER_3_PROMO_ID = '2237';
+const TIER_1_PROMO_ID = '3039';
+const TIER_2_PROMO_ID = '3040';
+const TIER_3_PROMO_ID = '3041';
 
 // Set up logging. Every run of this program logs to a new file.
 if (!fs.existsSync('logs')) {
@@ -73,7 +73,7 @@ const pgConfig = {
 	user: 'promo_records',
 	database: 'promo_records',
 	password: conf.password,
-	application_name: 'promo-item-distributor_2018' // eslint-disable-line camelcase
+	application_name: 'promo-item-distributor_2019' // eslint-disable-line camelcase
 };
 
 if (conf.env === 'production') {
@@ -126,7 +126,7 @@ const tasks = new Listr([
 	},
 	{
 		title: 'Create the tables if not already present',
-		task: () => pgClient.query('SELECT to_regclass(\'2018_donors\');')
+		task: () => pgClient.query('SELECT to_regclass(\'2019_donors\');')
 			.then(async result => {
 				logger.info('0');
 				if (result.rows[0].to_regclass === null) {
@@ -154,7 +154,7 @@ const tasks = new Listr([
 			donations.forEach(donation => {
 				// Add this donor's SteamID64 to the "donors" table, if not already present.
 				if (donation.steamid64) {
-					pgClient.query(`INSERT INTO "2018_donors" (steamid64) VALUES ('${donation.steamid64}') ON CONFLICT (steamid64) DO NOTHING;`, (err, result) => {
+					pgClient.query(`INSERT INTO "2019_donors" (steamid64) VALUES ('${donation.steamid64}') ON CONFLICT (steamid64) DO NOTHING;`, (err, result) => {
 						if (err) {
 							logger.log('error', `Error adding donor SteamID64 "${donation.steamid64}" to database:`, err);
 							return;
@@ -169,7 +169,7 @@ const tasks = new Listr([
 				}
 
 				// Add this donation to the "donations" table, if not already present
-				pgClient.query(`INSERT INTO "2018_donations" (id, steamid64, email, type, amount) VALUES ('${donation.id}', '${donation.steamid64}', '${donation.email}', '${donation.type}', '${donation.amount}') ON CONFLICT (id) DO NOTHING;`, (err, result) => {
+				pgClient.query(`INSERT INTO "2019_donations" (id, steamid64, email, type, amount) VALUES ('${donation.id}', '${donation.steamid64}', '${donation.email}', '${donation.type}', '${donation.amount}') ON CONFLICT (id) DO NOTHING;`, (err, result) => {
 					if (err) {
 						logger.log('error', `Error adding donation "${donation.id}" to database:`, err);
 						return;
@@ -197,7 +197,7 @@ const tasks = new Listr([
 	{
 		title: `Award medals to qualifying donors${conf.env === 'production' ? '' : ' [Simulated]'}`,
 		task: () => new Observable(observer => {
-			pgClient.query('SELECT *, "2018_donors".total_donated FROM "2018_donors" WHERE promo_item_awarded = \'\' AND "2018_donors".total_donated >= 10 ORDER BY steamid64;').then(result => {
+			pgClient.query('SELECT *, "2019_donors".total_donated FROM "2019_donors" WHERE promo_item_awarded = \'\' AND "2019_donors".total_donated >= 10 ORDER BY steamid64;').then(result => {
 				observer.next(`Found ${result.rowCount} qualifying donations`);
 				logger.info(`Found ${result.rowCount} qualifying donations`);
 
@@ -258,7 +258,7 @@ async function processDonor(donors: DonorFromPostgres[], currentDonor: DonorFrom
 			statusStr = `Awarding promo #${promoId} to ${currentDonor.steamid64}, total_donated: $${currentDonor.total_donated}... Success!`;
 			observer.next(statusStr);
 			logger.info(statusStr);
-			const updateResult = await pgClient.query(`UPDATE "2018_donors" SET promo_item_awarded = '${promoId}' WHERE steamid64 = '${currentDonor.steamid64}';`);
+			const updateResult = await pgClient.query(`UPDATE "2019_donors" SET promo_item_awarded = '${promoId}' WHERE steamid64 = '${currentDonor.steamid64}';`);
 			if (updateResult.rowCount === 1) {
 				logger.info(`Marked SteamID64 "${currentDonor.steamid64} as having received promo #${promoId} in database"`);
 			} else {
