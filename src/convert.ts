@@ -36,22 +36,22 @@ fs.createReadStream('data/raw-cash-donations.csv')
 		}
 	})
 	.on('end', () => {
-		const mptfDonations = require('../data/raw-mptf-donations.json').donations;
+		const mptfDonations = require('../data/raw-mptf-donations.json');
 		mptfDonations.forEach((mptfDonation: any) => {
 			array.push({
 				id: `mptf_${mptfDonation.id}`,
-				steamid64: mptfDonation.user.steamid,
-				email: '',
+				steamid64: mptfDonation.steamid,
+				email: 'roundup_2019@marketplace.tf',
 				type: 'mptf',
-				amount: mptfDonation.cash_value
+				amount: mptfDonation.amount
 			});
-			uniqueSteamid64s.add(mptfDonation.user.steamid);
-			mptfSteamid64s.add(mptfDonation.user.steamid);
-			if (cashSteamid64s.has(mptfDonation.user.steamid)) {
-				dualDonors.add(mptfDonation.user.steamid);
+			uniqueSteamid64s.add(mptfDonation.steamid);
+			mptfSteamid64s.add(mptfDonation.steamid);
+			if (cashSteamid64s.has(mptfDonation.steamid)) {
+				dualDonors.add(mptfDonation.steamid);
 			}
 
-			if (mptfDonation.user.steamid.length !== 17) {
+			if (mptfDonation.steamid.length !== 17) {
 				console.log('ABNORMAL MPTF STEAMID:', mptfDonation);
 			}
 		});
