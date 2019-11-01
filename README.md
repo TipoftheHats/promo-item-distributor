@@ -15,3 +15,12 @@ npm run mock-server
 ```bash
 npm start
 ```
+
+1. Take a backup of the database post-close.
+2. Update everything for the new year (all queries, promo IDs, amounts, etc.)
+3. Run the query to get raw cash donations (these will include cash and ScrapTF donations) and grab the file. Be sure to add the appropriate CSV headers.
+4. Run anything else for other donation ingresses, such as Marketplace.tf roundups.
+5. Place `raw-cash-donations.csv` and any other relevant files in `data`.
+6. `npm run convert` to get donations.json.
+7. Test out all three tiers of medals by using a custom `donations.json` that only has your user in it and running `npm run start`.
+8. Use the real `donations.json` and do the needful. Be sure to capture the output to a log file (`npm run start 2>&1 | tee -a log.log`).
